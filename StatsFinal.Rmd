@@ -1,0 +1,24 @@
+---
+title: "StatsFinal"
+author: "Trevor Freeland"
+date: "November 16, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, warning =F, message = F, comment = NA)
+library(dplyr)
+library(ggplot2)
+library(rethinking)
+library(pander)
+library(stargazer)
+```
+
+```{r}
+wineData <- read.csv("winequality-white.csv", sep = ";") %>% unique()
+wineData$Quality2 <- ifelse(wineData$quality >5, 1, 0)
+```
+
+```{r}
+pander(summary(wineData))
+```
