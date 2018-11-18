@@ -20,5 +20,147 @@ wineData$Quality2 <- ifelse(wineData$quality >5, 1, 0)
 ```
 
 ```{r}
-pander(summary(wineData))
+wineMod1 <- map2stan(
+  alist(
+    Quality2 ~ dbinom(1, p),
+    logit(p) <- a + b_fixedAcid * fixed.acidity + b_volatileAcid * volatile.acidity + b_citric * citric.acid + b_sugar * residual.sugar + b_chlorides * chlorides + b_freeSulf * free.sulfur.dioxide + b_totalSulf * total.sulfur.dioxide + b_density * density + b_pH * pH + b_sulphates * sulphates + b_alcohol * alcohol,
+    a~dnorm(0,10),
+    b_fixedAcid ~ dnorm(0,5),
+    b_volatileAcid ~ dnorm(0,5),
+    b_citric ~ dnorm(0,5),
+    b_sugar ~ dnorm(0,5),
+    b_chlorides ~ dnorm(0,5),
+    b_freeSulf ~ dnorm(0,5),
+    b_totalSulf ~ dnorm(0,5),
+    b_density ~ dnorm(0,5),
+    b_pH ~ dnorm(0,5),
+    b_sulphates ~ dnorm(0,5),
+    b_alcohol ~ dnorm(0,5)
+  
+  ),
+  data = wineData,  control = list(adapt_delta = 0.99)
+)
+save(wineMod1, file = "wineMod1.RData")
+```
+
+
+```{r}
+precis(wineMod1, prob = .97, digits = 4)
+#Probably don't want chlorides and density first. 
+```
+
+````{r}
+wineMod2 <- map2stan(
+  alist(
+    Quality2 ~ dbinom(1, p),
+    logit(p) <- a + b_fixedAcid * fixed.acidity + b_volatileAcid * volatile.acidity + b_citric * citric.acid + b_sugar * residual.sugar + b_freeSulf * free.sulfur.dioxide + b_totalSulf * total.sulfur.dioxide + b_pH * pH + b_sulphates * sulphates + b_alcohol * alcohol,
+    a~dnorm(0,10),
+    b_fixedAcid ~ dnorm(0,5),
+    b_volatileAcid ~ dnorm(0,5),
+    b_citric ~ dnorm(0,5),
+    b_sugar ~ dnorm(0,5),
+    b_freeSulf ~ dnorm(0,5),
+    b_totalSulf ~ dnorm(0,5),
+    b_pH ~ dnorm(0,5),
+    b_sulphates ~ dnorm(0,5),
+    b_alcohol ~ dnorm(0,5)
+  
+  ),
+  data = wineData,  control = list(adapt_delta = 0.99)
+)
+save(wineMod2, file = "wineMod2.RData")
+```
+
+```{r}
+precis(wineMod2, prob = .97, digits = 3)
+plot(wineMod2)
+compare(wineMod1, wineMod2)
+```
+
+```{r}
+wineMod3 <- map2stan(
+  alist(
+    Quality2 ~ dbinom(1, p),
+    logit(p) <- a + b_fixedAcid * fixed.acidity + b_volatileAcid * volatile.acidity  + b_sugar * residual.sugar + b_freeSulf * free.sulfur.dioxide + b_totalSulf * total.sulfur.dioxide + b_pH * pH + b_sulphates * sulphates + b_alcohol * alcohol,
+    a~dnorm(0,10),
+    b_fixedAcid ~ dnorm(0,5),
+    b_volatileAcid ~ dnorm(0,5),
+    b_sugar ~ dnorm(0,5),
+    b_freeSulf ~ dnorm(0,5),
+    b_totalSulf ~ dnorm(0,5),
+    b_pH ~ dnorm(0,5),
+    b_sulphates ~ dnorm(0,5),
+    b_alcohol ~ dnorm(0,5)
+  
+  ),
+  data = wineData, control = list(adapt_delta = 0.99)
+)
+save(wineMod3, file = "wineMod3.RData")
+```
+
+```{r}
+precis(wineMod3, prob = .97, digits = 3)
+plot(wineMod3)
+compare(wineMod1, wineMod2, wineMod3)
+```
+
+```{r}
+wineMod4 <- map2stan(
+  alist(
+    Quality2 ~ dbinom(1, p),
+    logit(p) <- a + b_fixedAcid * fixed.acidity + b_volatileAcid * volatile.acidity  + b_sugar * residual.sugar + b_freeSulf * free.sulfur.dioxide + b_totalSulf * total.sulfur.dioxide + b_sulphates * sulphates + b_alcohol * alcohol,
+    a~dnorm(0,5),
+    b_fixedAcid ~ dnorm(0,5),
+    b_volatileAcid ~ dnorm(0,5),
+    b_sugar ~ dnorm(0,5),
+    b_freeSulf ~ dnorm(0,5),
+    b_totalSulf ~ dnorm(0,5),
+    b_sulphates ~ dnorm(0,5),
+    b_alcohol ~ dnorm(0,5)
+  
+  ),
+  data = wineData, control = list(adapt_delta = 0.99)
+)
+save(wineMod4, file = "wineMod4.RData")
+```
+
+```{r}
+precis(wineMod4, prob = .97, digits = 4)
+plot(wineMod4)
+compare(wineMod1, wineMod2, wineMod3, wineMod4)
+```
+
+```{r}
+wineMod5 <-map2stan(
+  alist(
+    Quality2 ~ dbinom(1, p),
+    logit(p) <- a + b_fixedAcid * fixed.acidity + b_volatileAcid * volatile.acidity + b_citric * citric.acid + b_sugar * residual.sugar + b_freeSulf * free.sulfur.dioxide + b_totalSulf * total.sulfur.dioxide + b_sulphates * sulphates + b_alcohol * alcohol,
+    a~dnorm(0,10),
+    b_fixedAcid ~ dnorm(0,5),
+    b_volatileAcid ~ dnorm(0,5),
+    b_citric ~ dnorm(0,5),
+    b_sugar ~ dnorm(0,5),
+    b_freeSulf ~ dnorm(0,5),
+    b_totalSulf ~ dnorm(0,5),
+    b_sulphates ~ dnorm(0,5),
+    b_alcohol ~ dnorm(0,5)
+  
+  ),
+  data = wineData,  control = list(adapt_delta = 0.99)
+)
+save(wineMod5, file = "wineMod5.RData")
+```
+
+```{r}
+precis(wineMod5, prob = .97, digits = 4)
+plot(wineMod5)
+compare(wineMod1, wineMod2, wineMod3, wineMod4, wineMod5)
+```
+
+##EDA
+
+```{r}
+ggplot(wineData, aes(x = volatile.acidity, y = Quality2)) + geom_point() + stat_smooth()
+
+ggplot(wineData, aes(x = total.sulfur.dioxide, y = free.sulfur.dioxide)) + geom_point() + stat_smooth(method = "lm")
 ```

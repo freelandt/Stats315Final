@@ -1,0 +1,449 @@
+---
+title: "More logistic regression"
+subtitle: "Day 25 <html><div style='float:left'></div><hr color='#EB811B' size=1px width=796px></html>"
+author: "Math 315: Bayesian Statistics"
+date: "Fall 2018"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    css: [default, metropolis, metropolis-fonts]
+    mathjax: "https://cdn.bootcss.com/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_HTMLorMML"
+    nature:
+      highlightLines: true
+      countIncrementalSlides: false
+      ratio: 4:3
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(dev = 'svg')
+library(rethinking)
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+library(ggthemes)
+library(ggmosaic)
+library(ggformula)
+library(ggpubr)
+
+# load data set
+arthritis <- read.csv("http://aloy.rbind.io/data/arthritis.csv")
+
+# data set used to model
+arthritis.df <- arthritis %>%
+  mutate(
+    treat = ifelse(Treatment == "Treated", 1, 0),
+    sex = ifelse(Sex == "Female", 0, 1),
+    better = Better,
+    age = Age
+  ) %>%
+  select(treat, sex, better, age)
+
+# ggplot2 theme
+theme_set(theme_bw())
+
+# moth data
+data("case2102", package = "Sleuth3")
+
+moth <- case2102 %>%
+  mutate(
+    Morph = ifelse(Morph == "dark", 0, 1) # 0 = dark, 1 = light
+  ) 
+
+# load models that were already fit via STAN
+load("../day24/stan_model_fits.RData")
+load("stan_moth_fit.RData")
+load("regularize.RData")
+```
+
+
+class: middle, inverse
+
+# (Binary) Logistic regression
+
+---
+
+# Examining the chains
+
+```{r fig.height = 5, fig.width = 9, cache=TRUE}
+plot(m.arthritis, n_cols = 2)
+```
+
+---
+
+# A simple logistic model
+
+${\rm logit}(p_i) = \alpha + \beta {\tt treatment}$
+
+.code100[
+
+```{r echo=FALSE}
+precis(m1.arthritis)
+```
+
+]
+
+---
+
+# A more-realistic model
+
+.code100[
+```{r}
+precis(m.arthritis)
+```
+]
+
+---
+
+# Interpretations
+
+.code80[
+```{r echo=FALSE}
+precis(m.arthritis)
+```
+]
+
+$e^{\widehat{\beta}_{\rm sex}} = `r exp(coef(m.arthritis)["b_sex"])`$
+
+- For subjects in the same treatment group of the same age, the odds of improved symptoms are 0.21 times lower (i.e. about 79% lower) for males than females.
+
+$e^{\widehat{\beta}_{\rm age}} = `r exp(coef(m.arthritis)["b_age"])`$
+
+- For subjects in the same treatment group of the same sex, a one-year increase in age is associated with an increase in the odds of improved symptoms by a factor of 1.05 (i.e. about a 5% increase).
+
+$e^{\widehat{\beta}_{\rm treat}} = `r exp(coef(m.arthritis)["b_treat"])`$
+
+- For subjects of the same sex and age, the odds of improved symptoms are 6.28 times higher (i.e. about 628% higher) for the treatment group than the placebo group.
+
+---
+
+# Do we need an interaction?
+
+.code100[
+```{r}
+coeftab(m.arthritis, mint.arthritis)
+compare(m.arthritis, mint.arthritis)
+```
+]
+
+---
+
+# Data in the model space
+
+```{r fig.height = 4.5, fig.width = 8, echo=FALSE, fig.align='center'}
+# Use expand.grid() to get all combos of age, sex, and treatment
+cf.data <- expand.grid(
+  age = 23:74,
+  sex = c(0, 1),
+  treat = c(0, 1)
+)
+
+# compute probabilities from posterior draws
+# notice that link() automatically back-transforms
+# from the log odds to the probability scale
+m.link <- link(m.arthritis , data = cf.data, refresh = 0)
+
+# compute predicted heights for individuals
+# sim() will return 0s and 1s
+arthritis.sim <- sim(m.arthritis , data = cf.data, refresh = 0)
+
+# add mean and upper/lower bounds for plotting
+arthritis_plot_df <- cf.data %>%
+  mutate(
+    prob = apply(m.link, 2, mean),
+    prob.lo = apply(m.link, 2, PI, prob=0.97)[1,],
+    prob.hi = apply(m.link, 2, PI, prob=0.97)[2,],
+    sex = factor(sex, labels = c("Female", "Male")),
+    treat = factor(treat, labels = c("Placebo", "Treated"))
+  )
+
+# Now plot the results
+cf.plot <- ggplot(data = arthritis_plot_df) +
+  geom_jitter(data = arthritis, aes(x = Age, y = Better, color = Sex), width = 0, height = .02, alpha = 0.4) +
+  geom_line(aes(x = age, y = prob, color = sex)) +
+  geom_ribbon(aes(x = age, ymin = prob.lo, ymax = prob.hi, fill = sex), alpha = 0.3) +
+  facet_wrap(~treat) +
+  labs(y = "Pr(Better)") +
+  scale_fill_viridis_d("Sex") +
+  scale_color_viridis_d() +
+  theme(legend.position = "top")
+
+cf.plot
+```
+
+---
+
+class: middle, inverse
+
+# Perfect separation
+
+```{r include=FALSE}
+x <- 1:40
+y <- c(rep(0,20), rep(1,20))
+sep.data <- data.frame(x, y)
+```
+
+---
+
+# Perfect separation
+
+Definition: An explanatory variable (or combination of explanatory variables) perfectly predicts the binary response
+
+```{r echo=FALSE, fig.align='center', fig.height=3, fig.width=4.5, message=FALSE, warning=FALSE}
+## Generating the variables
+set.seed(1234)
+x <- rnorm(60, mean =1, sd = 2)
+y <- ifelse(x<2,0,1)
+sep.data <- data.frame(x = x, y = y)
+
+## Fit the model
+
+fit.0 <- glm (y ~ x, family=binomial(link="logit"))
+
+## Plot
+sep.logistic <- function(x) logistic(coef(fit.0)[1] + coef(fit.0)[2]*x)
+ggplot(data = sep.data, aes(x, y)) +
+  geom_point() +
+  stat_function(fun = sep.logistic) +
+  xlim(c(-6,6))
+```
+
+---
+
+# Frequentist methods fail
+
+```{r}
+fm <- glm(y ~ x, data = sep.data, family = binomial)
+summary(fm)$coef
+```
+
+
+.footnote[
+There are ways around this, but they are a bit complicated.
+]
+
+---
+
+# Regularization to the rescue
+
+- Logistic regression coefficients are almost always between $−$5 and 5:
+
+    +  5 on the logit scale takes you from 0.01 to 0.50 or from 0.50 to 0.99
+    
+- Independent Cauchy prior distributions with center 0 and scale 2.5
+
+    + Other suggestions include a $\mathcal{N}(0,1)$ and $t_3$
+
+- Re-scale each predictor to have mean 0 and sd $1/2$
+
+.footnote[
+Gelman, A., Jakulin, A., Pittau, M. G., & Su, Y. S. (2008). A weakly informative default prior distribution for logistic and other regression models. *The Annals of Applied Statistics*, 2(4), 1360-1383.
+]
+
+---
+
+# Regularization to the rescue
+
+```{r fig.height=5, fig.width=5, fig.align='center'}
+plot(coeftab(m.sep.cauchy, m.sep.normal, m.sep.t3))
+```
+
+
+---
+
+class: middle, inverse
+
+# (Agreggated) Binomial regression
+
+---
+
+# Moth Coloration and Natural Selection
+
+Moths rest on trees during the day and their color protects them from predators if they blend in with the tree.
+
+.center[
+![](http://catherinephamevolution.weebly.com/uploads/4/9/7/3/49739619/189059_orig.jpg)
+]
+
+
+---
+
+# The data
+
+- J. A. Bishop studied how natural selection worked on moths in England. Trees near Liverpool England were blackened by air pollution from the mills (1970’s).
+
+- 7 locations chosen, progressively farther from Liverpool
+
+- At each location, 8 trees were chosen at random and equal number of light and dark moths were glued on the trees 
+
+- After 24 hours, the number of moths taken (presumably by birds) were counted for each morph
+
+```{r echo=FALSE}
+knitr::kable(head(case2102, 4),  format = "html")
+```
+
+
+---
+
+# Research questions
+
+- Is the proportion of moths removed different between the light and dark trees?
+
+- Does this proportion depend on distance?
+
+---
+
+# Binomial response
+
+- $Y_i =$ the number of moths removed (i.e. successes) on each tree, in each morph
+
+- $Y_i =$ sum of $n_i$ Bernoulli trials
+
+- We will **assume** that these trials are independent
+
+
+---
+
+# EDA before modeling
+
+The binomial logistic regression model **assumes** that the **logit is linearly related to the predictors**
+
+```{r echo=FALSE, fig.height = 4, fig.width=7, fig.align='center'}
+# Calculate the empirical logit
+case2102 <- case2102 %>%
+  mutate(prop = Removed / Placed,
+         logit = log((Removed + 0.5) / (Placed - Removed + 0.5)))
+
+# Plot the empirical logit vs. predictors
+gf_point(logit ~ Distance, data = case2102, color = ~Morph, shape = ~Morph) %>%
+  # gf_line() %>%
+  gf_refine(scale_color_colorblind()) %>%
+  gf_labs(x = "Distance (km) from Liverpool",
+          y = "Empirical Logit")
+```
+
+---
+
+# Fitting the model
+
+The biggest change is that you need to specify what column contains the total number of trials.
+
+```{r eval=FALSE}
+moth.mod <- map2stan(
+  alist(
+*   Removed ~ dbinom(Placed, p),
+    logit(p) <- a + b_d * Distance + b_m * Morph + b_dm * Distance * Morph,
+    a ~ dnorm(0, 10), 
+    b_d ~ dnorm(0, 10), 
+    b_m ~ dnorm(0, 10), 
+    b_dm ~ dnorm(0, 10)
+  ),
+  data = moth,
+  warmup = 2000,
+  iter = 8000
+)
+```
+
+
+
+---
+
+# Fitted model
+
+```{r echo=FALSE, results='asis'}
+moth.tab <- precis(moth.mod)@output
+rownames(moth.tab) <- c("Intercept", "Distance", "Morph", "Distance:Morph")
+knitr::kable(moth.tab, format = 'html', digits = 3)
+```
+
+Dark morph (`Morph = 0`): 
+
+- Estimated slope: 0.018
+
+- For the dark morph, a 1-km increase in distance from Liverpool is associated with approximately a 2% increase in the odds of removal.
+
+Light morph (`Morph = 1`): 
+
+- Estimated slope: $0.018 - 0.028 = -0.01$
+
+- For the light morph, a 1-km increase in distance from Liverpool is associated with approximately a 1% decrease in the odds of removal.
+
+---
+
+# Model in the data space
+
+```{r echo=FALSE, fig.height = 4, fig.width=6, fig.align='center'}
+# Use expand.grid() to get all combos of distance and morph
+cf.moth <- expand.grid(
+  Distance = 0:52,
+  Morph = c(0, 1)
+)
+
+# compute probabilities from posterior draws
+# notice that link() automatically back-transforms
+# from the log odds to the probability scale
+moth.link <- link(moth.mod , data = cf.moth, refresh = 0)
+
+# add mean and upper/lower bounds for plotting
+moth_plot_df <- cf.moth %>%
+  mutate(
+    prob = apply(moth.link, 2, mean),
+    prob.lo = apply(moth.link, 2, PI, prob=0.97)[1,],
+    prob.hi = apply(moth.link, 2, PI, prob=0.97)[2,],
+    Morph = factor(Morph, labels = c("dark", "light"))
+  )
+
+# Now plot the results
+cf.plot.moth <- ggplot(data = moth_plot_df) +
+  geom_point(data = moth, aes(x = Distance, y = Removed/Placed, color = factor(Morph, labels = c("dark", "light")))) +
+  geom_line(aes(x = Distance, y = prob, color = Morph)) +
+  geom_ribbon(aes(x = Distance, ymin = prob.lo, ymax = prob.hi, fill = Morph), alpha = 0.3) +
+  labs(y = "Pr(Removal)") +
+  scale_fill_colorblind() +
+  scale_color_colorblind("Morph") +
+  theme(legend.position = "top")
+
+cf.plot.moth
+```
+
+---
+
+# Model in the data space
+
+```{r echo=FALSE, fig.height = 4, fig.width=9, fig.align='center'}
+moth.df.link <- link(moth.mod , data = moth, refresh = 0)
+moth.df.y <- sim(moth.mod , data = moth, refresh = 0)
+
+pred.moths <- moth %>%
+  mutate(
+    prob = apply(moth.df.link, 2, mean),
+    prob.lo = apply(moth.df.link, 2, PI)[1,],
+    prob.hi = apply(moth.df.link, 2, PI)[2,],
+    y = apply(moth.df.y, 2, mean),
+    y.lo = apply(moth.df.y, 2, PI)[1,],
+    y.hi = apply(moth.df.y, 2, PI)[2,],
+    Morph = factor(Morph, labels = c("Dark", "Light"))
+  )
+
+pc1 <- ggplot(data = pred.moths, aes(x = Distance)) +
+  geom_linerange(aes(ymin = prob.lo, ymax = prob.hi, color = Morph), position = position_dodge(width = 1)) +
+  geom_point(aes(y = prob, color = Morph), position = position_dodge(width = 1), shape = I(1)) +
+  geom_point(aes(y = Removed/Placed, color = Morph), position = position_dodge(width = 1)) +
+  scale_color_colorblind() +
+  labs(x = "Distance from Liverpool (km)",
+       y = "Pr(Removal)")
+
+pc2 <- ggplot(data = pred.moths, aes(x = Distance)) +
+  geom_linerange(aes(ymin = y.lo, ymax = y.hi, color = Morph), position = position_dodge(width = 1)) +
+  geom_point(aes(y = y, color = Morph), position = position_dodge(width = 1), shape = I(1)) +
+  geom_point(aes(y = Removed, color = Morph), position = position_dodge(width = 1)) +
+  scale_color_colorblind() +
+  labs(x = "Distance from Liverpool (km)",
+       y = "Number of moths removed")
+
+ggarrange(pc1, pc2, ncol = 2, common.legend = TRUE, legend = "top")
+```
+
+- `link(model)` will produce draws from the posterior of the probability of success 
+
+- `sim(model)` will produce draws from the posterior of the number of successes
